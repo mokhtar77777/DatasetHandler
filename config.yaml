@@ -1,0 +1,77 @@
+n_samples: 20000
+
+news_types:
+  - Politics
+  - Sports
+  - Technology
+  - Health
+  - Entertainment
+  - Business
+  - Science
+  - Environment
+  - Education
+  - World
+  - Economy
+  - Travel
+  - Food
+  - Lifestyle
+  - Culture
+  - Opinion
+  - Crime
+  - Weather
+  - Real Estate
+  - Automotive
+  - others
+
+summary_length:
+  min_summary_length: 200
+  max_summary_length: 2500
+
+time_spent:
+  multiplier: 100
+  std_dev: 6000
+  min_value: 15000
+
+clicked:
+  threshold_ms: 6000
+  probs_below: [0.6, 0.4]  # [not clicked, clicked]
+  probs_above: [0.3, 0.7]
+  choice: [0, 1]
+
+like_dislike_probs:
+  -1: 0.3
+  0 : 0.5
+  1 : 0.2
+
+rules_type:
+  hard_coded: true
+  custom: false
+
+
+custom_rules:
+  - conditions:
+      engagement_min: 110
+      clicked: 1
+      like_dislike: 1
+    output:
+      loc: 9.5
+      scale: 0.5
+
+  - conditions:
+      engagement_min: 95
+      engagement_max: 100
+      clicked: 0
+      like_dislike: -1
+    output:
+      loc: 3.0
+      scale: 0.5
+
+  - conditions:
+      engagement_max: 85
+      clicked: 1
+      like_dislike: 0
+    output:
+      loc: 4.0
+      scale: 0.6
+
+file_name: user_news_data.csv
