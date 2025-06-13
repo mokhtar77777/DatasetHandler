@@ -1,6 +1,9 @@
-n_samples: 20000
+# This is the configuration file for generating synthetic user news data.
 
-news_types:
+
+n_samples: 20000   # Number of synthetic data samples to generate
+
+news_types:        # List of possible news categories
   - Politics
   - Sports
   - Technology
@@ -23,43 +26,278 @@ news_types:
   - Automotive
   - others
 
-summary_length:
-  min_summary_length: 200
-  max_summary_length: 2500
+summary_length:                   # Summary length configuration
+  min_summary_length: 200         # Minimum length of the summary
+  max_summary_length: 2500        # Maximum length of the summary
 
-time_spent:
-  multiplier: 100
-  std_dev: 6000
-  min_value: 15000
+time_spent:                       # Time spent reading news configuration. the time is in seconds
+  multiplier: 0.1                 # Used to scale summary length to estimate time spent
+  std_dev: 6                      # Standard deviation for time spent (used in normal distribution)
+  min_value: 15                   # Minimum time spent in seconds
 
-clicked:
-  threshold_ms: 6000
-  probs_below: [0.6, 0.4]  # [not clicked, clicked]
-  probs_above: [0.3, 0.7]
-  choice: [0, 1]
+clicked:                          # full_article_button_clicked configuration
+  threshold_s: 6                  # Threshold in seconds to determine if the button was clicked
+  probs_below: [0.6, 0.4]         # [not clicked, clicked], if time spent is below threshold
+  probs_above: [0.3, 0.7]         # [not clicked, clicked], if time spent is above threshold
 
-like_dislike_probs:
-  -1: 0.3
-  0 : 0.5
-  1 : 0.2
-
-rules_type:
-  hard_coded: true
-  custom: false
-
-
-custom_rules:
-  - conditions:
-      engagement_min: 110
+like_dislike:                     # like_dislike configuration
+  rules_type:                     # Type of rules for like/dislike
+    hard_coded: true              # Use hard-coded rules
+  
+  hard_coded_values:              # Hard-coded values for like/dislike
+    rule_1:  
+      engagement: 0.1             # Engagement threshold for the rule, time_spent / summary_length
       clicked: 1
-      like_dislike: 1
+      probability: [0.2,0.3,0.5]  # Probabilities for dislike, neutral, like
+
+    rule_2:
+      engagement: 0.1
+      clicked: 0
+      probability: [0.2,0.5,0.3]
+
+    rule_3:
+      engagement: 0.1
+      clicked: 1
+      probability: [0.3,0.4,0.3]
+
+    rule_4:
+      probability: [0.6,0.3,0.1]
+
+  
+  custom_rules:                               # Custom rules for like/dislike
+    - conditions:  
+        engagement_min: 0.1                   # Minimum engagement threshold
+        clicked: 1
+        probability: [0.2,0.3,0.5]            # Probabilities for dislike, neutral, like
+
+    - conditions:
+        engagement_max: 0.1                   # Maximum engagement threshold
+        clicked: 0
+        probability: [0.3,0.4,0.3]
+ 
+
+    - conditions:
+        engagement_min: 0.1
+        clicked: 0
+        probability: [0.2,0.5,0.3]
+  
+  custom_rules_default_value: [0.2,0.6,0.2]  # Default probabilities for dislike, neutral, like for custom rules
+
+
+
+score_rules_type:                           # Type of rules for scoring
+  hard_coded: true                          # true if hard-coded rules are used, false if custom rules are used
+
+
+score_hard_coded_values:                    # Hard-coded values for scoring there are 30 rules
+  rule_1:
+      engagement: 0.11                      # Engagement threshold for the rule, time_spent / summary_length
+      output :
+        mean: 9.5                           # Mean score for the rule
+        std: 0.5                            # Standard deviation for the rule
+
+  rule_2:
+      engagement: 0.11
+      output :
+        mean: 8.0
+        std: 0.5
+
+  rule_3:
+      engagement: 0.11
+      output :
+        mean: 6.0
+        std: 0.5
+
+  rule_4:
+      engagement: 0.11
+      output :
+        mean: 8.5
+        std: 0.5
+  rule_5:
+      engagement: 0.11
+      output :
+        mean: 7.0
+        std: 0.5
+  rule_6:
+      engagement: 0.11
+      output :
+        mean: 5.0
+        std: 0.5
+
+  rule_7:
+      engagement_max: 0.11
+      engagement_min: 0.1
+      output :
+        mean: 8.5
+        std: 0.5
+
+  rule_8:
+      engagement_max: 0.11
+      engagement_min: 0.1
+      output :
+        mean: 7.0
+        std: 0.5
+
+  rule_9:
+      engagement_max: 0.11
+      engagement_min: 0.1
+      output :
+        mean: 5.0
+        std: 0.5
+
+  rule_10:
+      engagement_max: 0.11
+      engagement_min: 0.1
+      output :
+        mean: 7.5
+        std: 0.5
+
+  rule_11:
+      engagement_max: 0.11
+      engagement_min: 0.1
+      output :
+        mean: 6.0
+        std: 0.5
+
+  rule_12:
+      engagement_max: 0.11
+      engagement_min: 0.1
+      output :
+        mean: 4.0
+        std: 0.5
+
+  rule_13:
+      engagement_max: 0.1
+      engagement_min: 0.095
+      output :
+        mean: 7.5
+        std: 0.5
+
+  rule_14:
+      engagement_max: 0.1
+      engagement_min: 0.095
+      output :
+        mean: 6.0
+        std: 0.5
+
+  rule_15:
+      engagement_max: 0.1
+      engagement_min: 0.095
+      output :
+        mean: 4.0
+        std: 0.5
+
+  rule_16:
+      engagement_max: 0.1
+      engagement_min: 0.095
+      output :
+        mean: 6.5
+        std: 0.5
+
+  rule_17:
+      engagement_max: 0.1
+      engagement_min: 0.095
+      output :
+        mean: 5.0
+        std: 0.5
+
+  rule_18:
+      engagement_max: 0.1
+      engagement_min: 0.095
+      output :
+        mean: 3.0
+        std: 0.5
+
+  rule_19:
+      engagement_max: 0.095
+      engagement_min: 0.085
+      output :
+        mean: 6.5
+        std: 0.6
+
+  rule_20:
+      engagement_max: 0.095
+      engagement_min: 0.085
+      output :
+        mean: 5.0
+        std: 0.6
+
+  rule_21:
+      engagement_max: 0.095
+      engagement_min: 0.085
+      output :
+        mean: 3.0
+        std: 0.6
+
+  rule_22:
+      engagement_max: 0.095
+      engagement_min: 0.085
+      output :
+        mean: 5.5
+        std: 0.6
+
+  rule_23:
+      engagement_max: 0.095
+      engagement_min: 0.085
+      output :
+        mean: 4.0
+        std: 0.6
+  
+  rule_24:
+      engagement_max: 0.095
+      engagement_min: 0.085
+      output :
+        mean: 2.0
+        std: 0.6
+
+  rule_25:
+      engagement: 0.085
+      output :
+        mean: 5.5
+        std: 0.6
+
+  rule_26:
+      engagement: 0.085
+      output :
+        mean: 4.0
+        std: 0.6
+
+  rule_27:
+      engagement: 0.085
+      output :
+        mean: 2.0
+        std: 0.6
+
+  rule_28:
+      engagement: 0.085
+      output :
+        mean: 4.5
+        std: 0.6
+
+  rule_29:
+      engagement: 0.085
+      output :
+        mean: 3.0
+        std: 0.6
+
+  rule_30:
+      engagement: 0.085
+      output :
+        mean: 1.0
+        std: 0.6
+
+score_custom_rules:         # Custom rules for scoring
+  - conditions:
+      engagement_min: 0.11  # Minimum engagement threshold
+      clicked: 1            # Button clicked
+      like_dislike: 1       # Like
     output:
-      loc: 9.5
-      scale: 0.5
+      loc: 9.5              # Mean score
+      scale: 0.5            # Standard deviation
 
   - conditions:
-      engagement_min: 95
-      engagement_max: 100
+      engagement_min: 0.095
+      engagement_max: 0.1
       clicked: 0
       like_dislike: -1
     output:
@@ -67,11 +305,15 @@ custom_rules:
       scale: 0.5
 
   - conditions:
-      engagement_max: 85
+      engagement_max: 0.085
       clicked: 1
       like_dislike: 0
     output:
       loc: 4.0
       scale: 0.6
 
-file_name: user_news_data.csv
+score_custom_rules_default_value:   # Default values for custom scoring rules
+  loc: 5.0                          # Default mean score                  
+  scale: 1.0                        # Default standard deviation
+
+file_name: user_news_data.csv       # Name of the output CSV file
