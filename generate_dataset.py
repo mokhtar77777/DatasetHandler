@@ -23,7 +23,7 @@ import numpy as np
 import random
 from tqdm import tqdm
 import yaml
-
+import time
     
 def apply_score_custom_rules(cfg, engagement_ratio, clicked, like_dislike):
     """
@@ -100,35 +100,129 @@ def generate_feature(cfg):
     - Generating summary length and time spent
     - Determining if user clicked
     - Inferring like/dislike sentiment
+    - Calculating user score based on engagement ratio and rules
 
     Args:
         cfg (dict): Loaded YAML config.
 
     Returns:
-        list: [news_type, summary_length, time_spent, clicked, like_dislike]
+        list: [news_type, summary_length, time_spent, clicked, like_dislike,score]
     """
+    n_samples = cfg['n_samples']
     news_types = cfg['news_types']
-    news_type = random.choice(news_types)
-    summary_length = np.random.randint(cfg['summary_length']['min_summary_length'], cfg['summary_length']['max_summary_length'])
-    time_spent = np.random.normal(loc=summary_length * cfg['time_spent']['multiplier'], scale=cfg['time_spent']['std_dev']) 
-    time_spent = max(cfg['time_spent']['min_value'], time_spent)
-    clicked = np.random.choice([0,1], p=cfg['clicked']['probs_below']) if time_spent < cfg['clicked']['threshold_s'] else np.random.choice([0,1],p=cfg['clicked']['probs_above'])
-    
-    engagement_ratio = time_spent / summary_length
 
-    if cfg['like_dislike']['rules_type']['hard_coded']:
-      if clicked == cfg['like_dislike']['hard_coded_values']['rule_1']['clicked'] and engagement_ratio >= cfg['like_dislike']['hard_coded_values']['rule_1']['engagement']:
-        like_dislike = np.random.choice([-1,0,1], p=cfg['like_dislike']['hard_coded_values']['rule_1']['probability'])
-      elif clicked == cfg['like_dislike']['hard_coded_values']['rule_2']['clicked'] and engagement_ratio >= cfg['like_dislike']['hard_coded_values']['rule_2']['engagement']:
-        like_dislike = np.random.choice([-1,0,1], p=cfg['like_dislike']['hard_coded_values']['rule_2']['probability'])
-      elif clicked == cfg['like_dislike']['hard_coded_values']['rule_3']['clicked'] and engagement_ratio < cfg['like_dislike']['hard_coded_values']['rule_3']['engagement']:
-        like_dislike = np.random.choice([-1,0,1], p=cfg['like_dislike']['hard_coded_values']['rule_3']['probability'])
-      else:
-        like_dislike = np.random.choice([-1,0,1], p=cfg['like_dislike']['hard_coded_values']['rule_4']['probability'])
-    else:
-      like_dislike = apply_like_dislike_custom_rules(cfg, engagement_ratio, clicked)
+    # Vectorized precomputations
+    summary_lengths = np.random.randint(
+        cfg['summary_length']['min_summary_length'],
+        cfg['summary_length']['max_summary_length'],
+        size=n_samples
+    )
+
+    news_type_choices = np.random.choice(news_types, size=n_samples)
+
+    time_spent_raw = np.random.normal(
+        loc=summary_lengths * cfg['time_spent']['multiplier'],
+        scale=cfg['time_spent']['std_dev']
+    )
+    time_spent_clamped = np.maximum(cfg['time_spent']['min_value'], time_spent_raw)
+
+    clicked_precomputed = np.where(
+        time_spent_clamped < cfg['clicked']['threshold_s'],
+        np.random.choice([0, 1], size=n_samples, p=cfg['clicked']['probs_below']),
+        np.random.choice([0, 1], size=n_samples, p=cfg['clicked']['probs_above'])
+    )
+    engagement_ratios = time_spent_clamped / summary_lengths
+
+    data = []
+    for i in tqdm(range(n_samples), desc="Generating samples"):
+        summary_length = summary_lengths[i]
+        news_type = news_type_choices[i]
+        time_spent = time_spent_clamped[i]
+        clicked_val = clicked_precomputed[i]
+        engagement_ratio = engagement_ratios[i]
+
+        # Keep rule-based logic unchanged
+        if cfg['like_dislike']['rules_type']['hard_coded']:
+            if clicked_val == cfg['like_dislike']['hard_coded_values']['rule_1']['clicked'] and engagement_ratio >= cfg['like_dislike']['hard_coded_values']['rule_1']['engagement']:
+                like_dislike = np.random.choice([-1, 0, 1], p=cfg['like_dislike']['hard_coded_values']['rule_1']['probability'])
+            elif clicked_val == cfg['like_dislike']['hard_coded_values']['rule_2']['clicked'] and engagement_ratio >= cfg['like_dislike']['hard_coded_values']['rule_2']['engagement']:
+                like_dislike = np.random.choice([-1, 0, 1], p=cfg['like_dislike']['hard_coded_values']['rule_2']['probability'])
+            elif clicked_val == cfg['like_dislike']['hard_coded_values']['rule_3']['clicked'] and engagement_ratio < cfg['like_dislike']['hard_coded_values']['rule_3']['engagement']:
+                like_dislike = np.random.choice([-1, 0, 1], p=cfg['like_dislike']['hard_coded_values']['rule_3']['probability'])
+            else:
+                like_dislike = np.random.choice([-1, 0, 1], p=cfg['like_dislike']['hard_coded_values']['rule_4']['probability'])
+        else:
+            like_dislike = apply_like_dislike_custom_rules(cfg, engagement_ratio, clicked_val)
+
+        if cfg['score_rules_type']['hard_coded']:
+            if engagement_ratio >= cfg['score_hard_coded_values']['rule_1']['engagement'] and clicked_val == 1 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_1']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_1']['output']['std'])
+            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_2']['engagement'] and clicked_val == 1 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_2']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_2']['output']['std'])
+            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_3']['engagement'] and clicked_val == 1 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_3']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_3']['output']['std'])
+            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_4']['engagement'] and clicked_val == 0 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_4']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_4']['output']['std'])
+            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_5']['engagement'] and clicked_val == 0 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_5']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_5']['output']['std'])
+            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_6']['engagement'] and clicked_val == 1 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_6']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_6']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_7']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_7']['engagement_min'] and clicked_val == 1 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_7']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_7']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_8']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_8']['engagement_min'] and clicked_val == 1 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_8']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_8']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_9']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_9']['engagement_min'] and clicked_val == 1 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_9']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_9']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_10']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_10']['engagement_min'] and clicked_val == 0 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_10']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_10']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_11']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_11']['engagement_min'] and clicked_val == 0 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_11']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_11']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_12']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_12']['engagement_min'] and clicked_val == 0 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_12']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_12']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_13']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_13']['engagement_min'] and clicked_val == 1 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_13']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_13']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_14']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_14']['engagement_min'] and clicked_val == 1 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_14']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_14']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_15']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_15']['engagement_min'] and clicked_val == 1 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_15']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_15']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_16']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_16']['engagement_min'] and clicked_val == 0 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_16']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_16']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_17']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_17']['engagement_min'] and clicked_val == 0 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_17']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_17']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_18']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_18']['engagement_min'] and clicked_val == 0 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_18']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_18']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_19']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_19']['engagement_min'] and clicked_val == 1 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_19']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_19']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_20']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_20']['engagement_min'] and clicked_val == 1 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_20']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_20']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_21']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_21']['engagement_min'] and clicked_val == 1 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_21']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_21']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_22']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_22']['engagement_min'] and clicked_val == 0 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_22']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_22']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_23']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_23']['engagement_min'] and clicked_val == 0 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_23']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_23']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_24']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_24']['engagement_min'] and clicked_val == 0 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_24']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_24']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_25']['engagement'] and clicked_val == 1 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_25']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_25']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_26']['engagement'] and clicked_val == 1 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_26']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_26']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_27']['engagement'] and clicked_val == 1 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_27']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_27']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_28']['engagement'] and clicked_val == 0 and like_dislike == 1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_28']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_28']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_29']['engagement'] and clicked_val == 0 and like_dislike == 0:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_29']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_29']['output']['std'])
+            elif engagement_ratio < cfg['score_hard_coded_values']['rule_30']['engagement'] and clicked_val == 0 and like_dislike == -1:
+                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_30']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_30']['output']['std'])
+        else:
+            score = apply_score_custom_rules(cfg, engagement_ratio, clicked_val, like_dislike)
+
+        score = round(max(0.0, min(score, 10.0)), 2)
+
+        data.append([time_spent, clicked_val, news_type, summary_length, like_dislike, score])
     
-    return [news_type,summary_length,time_spent,clicked,like_dislike]
+    return data
 
 
 if __name__ == "__main__":
@@ -149,83 +243,10 @@ if __name__ == "__main__":
     """
     with open("config.yaml", "r") as f:
         cfg = yaml.safe_load(f)
-        
-    n_samples = cfg['n_samples']
-    
-    data = []
-    for _ in tqdm(range(n_samples), desc="Generating samples"):
-        news_type,summary_length,time_spent,clicked,like_dislike = generate_feature(cfg)
-        
-        engagement_ratio = time_spent / summary_length
-        
-        if cfg['score_rules_type']['hard_coded']:
-            if engagement_ratio >= cfg['score_hard_coded_values']['rule_1']['engagement'] and clicked == 1 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_1']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_1']['output']['std'])
-            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_2']['engagement'] and clicked == 1 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_2']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_2']['output']['std'])
-            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_3']['engagement'] and clicked == 1 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_3']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_3']['output']['std'])
-            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_4']['engagement'] and clicked == 0 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_4']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_4']['output']['std'])
-            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_5']['engagement'] and clicked == 0 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_5']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_5']['output']['std'])
-            elif engagement_ratio >= cfg['score_hard_coded_values']['rule_6']['engagement'] and clicked == 1 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_6']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_6']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_7']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_7']['engagement_min'] and clicked == 1 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_7']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_7']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_8']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_8']['engagement_min'] and clicked == 1 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_8']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_8']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_9']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_9']['engagement_min'] and clicked == 1 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_9']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_9']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_10']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_10']['engagement_min'] and clicked == 0 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_10']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_10']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_11']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_11']['engagement_min'] and clicked == 0 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_11']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_11']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_12']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_12']['engagement_min'] and clicked == 0 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_12']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_12']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_13']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_13']['engagement_min'] and clicked == 1 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_13']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_13']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_14']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_14']['engagement_min'] and clicked == 1 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_14']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_14']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_15']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_15']['engagement_min'] and clicked == 1 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_15']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_15']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_16']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_16']['engagement_min'] and clicked == 0 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_16']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_16']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_17']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_17']['engagement_min'] and clicked == 0 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_17']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_17']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_18']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_18']['engagement_min'] and clicked == 0 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_18']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_18']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_19']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_19']['engagement_min'] and clicked == 1 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_19']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_19']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_20']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_20']['engagement_min'] and clicked == 1 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_20']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_20']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_21']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_21']['engagement_min'] and clicked == 1 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_21']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_21']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_22']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_22']['engagement_min'] and clicked == 0 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_22']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_22']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_23']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_23']['engagement_min'] and clicked == 0 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_23']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_23']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_24']['engagement_max'] and engagement_ratio >= cfg['score_hard_coded_values']['rule_24']['engagement_min'] and clicked == 0 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_24']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_24']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_25']['engagement'] and clicked == 1 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_25']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_25']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_26']['engagement'] and clicked == 1 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_26']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_26']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_27']['engagement'] and clicked == 1 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_27']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_27']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_28']['engagement'] and clicked == 0 and like_dislike == 1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_28']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_28']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_29']['engagement'] and clicked == 0 and like_dislike == 0:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_29']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_29']['output']['std'])
-            elif engagement_ratio < cfg['score_hard_coded_values']['rule_30']['engagement'] and clicked == 0 and like_dislike == -1:
-                score = np.random.normal(loc=cfg['score_hard_coded_values']['rule_30']['output']['mean'], scale=cfg['score_hard_coded_values']['rule_30']['output']['std'])
-        else:
-            score = apply_score_custom_rules(cfg, engagement_ratio, clicked, like_dislike)
-
-        # Clamp and round
-        score = round(max(0.0, min(score, 10.0)), 2)
-
-        data.append([time_spent, clicked, news_type, summary_length, like_dislike, score])
+    start_time = time.time()
+    data = generate_feature(cfg)
+    end_time = time.time()
+    print(f"Data generation completed in {end_time - start_time:.2f} seconds.")
     df = pd.DataFrame(data, columns=['time_spent', 'clicked_full_article', 'news_type', 'summary_length', 'like_dislike', 'user_score'])
 
     df.to_csv(cfg['file_name'], index=False)
