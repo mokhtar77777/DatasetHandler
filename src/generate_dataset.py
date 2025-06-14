@@ -14,16 +14,17 @@ Configuration should include:
 - Rules for generating 'clicked', 'like_dislike', and 'user_score'
 - Distributions and probabilities for each rule
 
-Dependencies: pandas, numpy, yaml, tqdm, random
+Dependencies: pandas, numpy, yaml, tqdm, os, argparse
 """
 
 
 import pandas as pd
 import numpy as np
-import random
 from tqdm import tqdm
 import yaml
 import time
+import os
+import argparse
     
 def apply_score_rules(cfg, engagement_ratio, clicked, like_dislike):
     """
@@ -169,7 +170,12 @@ if __name__ == "__main__":
     6. Converts the list to a pandas DataFrame and saves it as a CSV file.
     7. Prints a summary of the 'user_score' distribution.
     """
-    with open("config.yaml", "r") as f:
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--configfile", required=True, help="Path of .YAML configuration file")
+    args = argparser.parse_args()
+
+    with open(args.configfile, "r") as f:
         cfg = yaml.safe_load(f)
     start_time = time.time()
     data = generate_feature(cfg)
@@ -177,7 +183,14 @@ if __name__ == "__main__":
     print(f"Data generation completed in {end_time - start_time:.2f} seconds.")
     df = pd.DataFrame(data, columns=['time_spent', 'clicked_full_article', 'news_type', 'summary_length', 'like_dislike', 'user_score'])
 
-    df.to_csv(cfg['file_name'], index=False)
+    # Get dataset destination folder and filename
+    dataset_destination = cfg['dataset_destination']
+    # Get dataset directory path
+    dataset_dir = os.path.dirname(dataset_destination)
+    # Make directory of the dataset if not exists
+    os.makedirs(dataset_dir, exist_ok=True)
+    # Save dataset dataframe in dataset destination
+    df.to_csv(dataset_destination, index=False)
 
     print("\nUser score summary:")
     print(df['user_score'].describe())
